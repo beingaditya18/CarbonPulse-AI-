@@ -1,275 +1,220 @@
 'use client';
-import { useState, useCallback } from 'react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Activity, ArrowRight, Play, Loader2, AlertCircle } from 'lucide-react';
-import { fetchApi } from '@/lib/api';
+
+import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import { useCarbonStore } from '@/store/useCarbonStore';
+import { CategoryType } from '@/types/store';
+import { simulateTwinEmissions } from '@/lib/twinRegression';
+import { TwinAvatar } from '@/features/twin/components/TwinAvatar';
+import { Activity, Play, Zap, Car, Apple, ShoppingBag, Trash } from 'lucide-react';
+
+// Dynamic import of forecast chart widget for performance
+const TwinForecastChart = dynamic(
+  () => import('@/features/twin/components/TwinForecastChart').then((mod) => mod.TwinForecastChart),
+  { 
+    ssr: false, 
+    loading: () => (
+      <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl h-60 animate-pulse flex items-center justify-center">
+        <span className="text-xs text-zinc-600 font-bold uppercase tracking-wider">Loading digital twin chart...</span>
+      </div>
+    )
+  }
+);
 
 /**
- * The result of a Digital Carbon Twin simulation run from the backend.
+ * CarbonTwinPage enables scenario modeling and forecasting of user carbon paths.
  */
-interface SimulationResult {
-  projected_emission: number;
-  scenario: string;
-  status: string;
-}
-
-/**
- * The display-ready result combining backend data with a static baseline
- * (baseline would ideally come from a user summary endpoint in a v2 API).
- */
-interface DisplayResult {
-  baseline: number;
-  projected: number;
-  scenario: string;
-  saved: number;
-}
-
-/**
- * A predefined scenario that the user can select before running the simulation.
- */
-interface Scenario {
-  id: string;
-  label: string;
-  badge: string;
-  category: string;
-  reductionPercentage: number;
-  days: number;
-}
-
-const SCENARIOS: Scenario[] = [
-  {
-    id: 'reduce-ac',
-    label: 'Reduce AC Usage by 20%',
-    badge: '-15 kg CO₂',
-    category: 'electricity',
-    reductionPercentage: 20,
-    days: 30,
-  },
-  {
-    id: 'public-transport',
-    label: 'Use Public Transport twice a week',
-    badge: '-37 kg CO₂',
-    category: 'transportation',
-    reductionPercentage: 40,
-    days: 30,
-  },
-  {
-    id: 'vegetarian',
-    label: 'Eat vegetarian 3 days a week',
-    badge: '-22 kg CO₂',
-    category: 'food',
-    reductionPercentage: 43,
-    days: 30,
-  },
-];
-
-/** Placeholder baseline until a /carbon/summary endpoint is available. */
-const BASELINE_PLACEHOLDER = 150.4;
-
 export default function CarbonTwinPage() {
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>(SCENARIOS[1].id);
-  const [result, setResult] = useState<DisplayResult | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const { logs, user } = useCarbonStore();
+  const [mounted, setMounted] = useState(false);
 
-  const selectedScenario = SCENARIOS.find((s) => s.id === selectedScenarioId)!;
+  // Simulation Parameters
+  const [targetCategory, setTargetCategory] = useState<CategoryType>('transportation');
+  const [reductionPercent, setReductionPercent] = useState(30);
+  const [days, setDays] = useState(30);
+  
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationRun, setSimulationRun] = useState(false);
 
-  /**
-   * Posts the selected scenario to /carbon/twin/simulate and renders the result.
-   */
-  const runSimulation = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
+  const [simResults, setSimResults] = useState({
+    baselineProjected: 240,
+    simulatedProjected: 195,
+    carbonSaved: 45,
+    scenarioDescription: '',
+  });
 
-    try {
-      const data: SimulationResult = await fetchApi('/carbon/twin/simulate', {
-        method: 'POST',
-        body: JSON.stringify({
-          category_to_reduce: selectedScenario.category,
-          reduction_percentage: selectedScenario.reductionPercentage,
-          days_to_simulate: selectedScenario.days,
-        }),
-      });
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-      const saved = Math.max(0, BASELINE_PLACEHOLDER - data.projected_emission);
-
-      setResult({
-        baseline: BASELINE_PLACEHOLDER,
-        projected: data.projected_emission,
-        scenario: data.scenario,
-        saved: Math.round(saved * 10) / 10,
-      });
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Simulation failed. Please try again.';
-      setError(message);
-    } finally {
-      setLoading(false);
+  // Sync simulation outputs dynamically
+  useEffect(() => {
+    if (mounted && logs.length > 0) {
+      const results = simulateTwinEmissions(logs, targetCategory, reductionPercent, days);
+      setSimResults(results);
     }
-  }, [selectedScenario]);
+  }, [targetCategory, reductionPercent, days, logs, mounted]);
+
+  const handleSimulate = () => {
+    setIsSimulating(true);
+    setSimulationRun(false);
+
+    setTimeout(() => {
+      setIsSimulating(false);
+      setSimulationRun(true);
+      
+      const currentBadges = useCarbonStore.getState().badges;
+      const b4 = currentBadges.find(b => b.id === 'b-4');
+      if (b4 && !b4.unlocked) {
+        useCarbonStore.setState((state) => ({
+          badges: state.badges.map(b => b.id === 'b-4' ? { ...b, unlocked: true } : b),
+          user: { ...state.user, points: state.user.points + 50 },
+        }));
+      }
+    }, 1200);
+  };
+
+  if (!mounted) return null;
+
+  const isTwinHealthy = simResults.simulatedProjected < simResults.baselineProjected;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight">Digital Carbon Twin</h1>
-        <p className="text-muted-foreground mt-1 text-lg">
-          Simulate lifestyle changes and predict your future footprint.
-        </p>
+      
+      {/* HEADER */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight">AI Carbon Twin</h1>
+          <p className="text-zinc-500 mt-1">
+            Simulate carbon footprint yield before modifying real-world consumption habits.
+          </p>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* ── Scenario Simulator Controls ──────────────────────────────── */}
-        <Card className="shadow-sm border-blue-200 dark:border-blue-900/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-500" aria-hidden="true" />
-              Scenario Simulator
-            </CardTitle>
-            <CardDescription>
-              Select a lifestyle change below and run the simulation to see its impact.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Scenario selection list */}
-            <fieldset>
-              <legend className="sr-only">Choose a scenario to simulate</legend>
-              <div className="space-y-3">
-                {SCENARIOS.map((scenario) => {
-                  const isSelected = scenario.id === selectedScenarioId;
-                  return (
-                    <label
-                      key={scenario.id}
-                      htmlFor={`scenario-${scenario.id}`}
-                      className={[
-                        'flex justify-between items-center p-4 rounded-lg border cursor-pointer transition-colors group',
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'bg-card hover:border-blue-400 dark:hover:border-blue-600',
-                      ].join(' ')}
+      {/* DUAL WORKSPACE LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+        
+        {/* LEFT COLUMN: PARAMETER SETTING & PROJECTIONS */}
+        <div className="lg:col-span-7 bg-zinc-900 border border-zinc-800/80 p-6 rounded-2xl flex flex-col justify-between space-y-6">
+          
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xs uppercase tracking-wider font-extrabold text-zinc-500 mb-1">Scenario Parameters</h3>
+              <h2 className="text-base font-bold text-zinc-300">Model Lifestyle Modifications</h2>
+            </div>
+
+            {/* Inputs sliders */}
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label htmlFor="sim-target" className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Target Category</label>
+                <select
+                  id="sim-target"
+                  value={targetCategory}
+                  onChange={(e) => setTargetCategory(e.target.value as CategoryType)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs md:text-sm text-zinc-300 capitalize cursor-pointer font-bold outline-none"
+                >
+                  <option value="transportation">Transportation</option>
+                  <option value="electricity">Electricity</option>
+                  <option value="food">Diet & Food</option>
+                  <option value="shopping">Shopping</option>
+                  <option value="waste">Waste & Composting</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs md:text-sm">
+                  <span className="font-semibold text-zinc-300">Reduction Intensity</span>
+                  <span className="font-bold text-emerald-500">{reductionPercent}% reduction</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="95"
+                  step="5"
+                  value={reductionPercent}
+                  onChange={(e) => setReductionPercent(Number(e.target.value))}
+                  className="w-full h-1.5 bg-emerald-500/10 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                  aria-label="Reduction Intensity slider"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs md:text-sm">
+                  <span className="font-semibold text-zinc-300">Forecasting Scope</span>
+                  <span className="font-bold text-emerald-500">{days} Days Ahead</span>
+                </div>
+                <div className="flex gap-2">
+                  {[30, 60, 90].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setDays(d)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                        days === d 
+                          ? 'bg-emerald-600 border-emerald-500 text-white' 
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
                     >
-                      <input
-                        type="radio"
-                        id={`scenario-${scenario.id}`}
-                        name="simulation-scenario"
-                        value={scenario.id}
-                        checked={isSelected}
-                        onChange={() => setSelectedScenarioId(scenario.id)}
-                        className="sr-only"
-                      />
-                      <span
-                        className={[
-                          'font-medium',
-                          isSelected
-                            ? 'text-blue-700 dark:text-blue-300'
-                            : 'group-hover:text-blue-600 dark:group-hover:text-blue-400',
-                        ].join(' ')}
-                      >
-                        {scenario.label}
-                      </span>
-                      <Badge
-                        className={
-                          isSelected ? 'bg-blue-600 text-white' : undefined
-                        }
-                        variant={isSelected ? 'default' : 'outline'}
-                      >
-                        {scenario.badge}
-                      </Badge>
-                    </label>
-                  );
-                })}
+                      {d} Days
+                    </button>
+                  ))}
+                </div>
               </div>
-            </fieldset>
+            </div>
 
-            {/* Error feedback */}
-            {error && (
-              <div role="alert" className="flex items-center gap-2 text-sm text-red-600">
-                <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <Button
-              onClick={runSimulation}
-              disabled={loading}
-              aria-busy={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+            <button
+              onClick={handleSimulate}
+              disabled={isSimulating}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:bg-emerald-800 disabled:cursor-not-allowed"
             >
-              {loading ? (
+              {isSimulating ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
-                  Running Simulation…
+                  <Activity className="w-4 h-4 animate-pulse" />
+                  <span>Calibrating Twin model parameters...</span>
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4 mr-2" aria-hidden="true" />
-                  Run Simulation
+                  <Play className="w-4 h-4" />
+                  <span>Simulate Scenario Predictions</span>
                 </>
               )}
-            </Button>
-          </CardContent>
-        </Card>
+            </button>
+          </div>
 
-        {/* ── Simulation Results ───────────────────────────────────────── */}
-        {result && (
-          <Card
-            className="shadow-sm border-green-200 dark:border-green-900/50 animate-in zoom-in-95 duration-300"
-            aria-live="polite"
-            aria-label="Simulation results"
-          >
-            <CardHeader>
-              <CardTitle>Simulation Results</CardTitle>
-              <CardDescription>Projected footprint for next {selectedScenario.days} days</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between mt-4" role="presentation">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-1">Baseline</p>
-                  <p
-                    className="text-3xl font-bold text-gray-400"
-                    aria-label={`Baseline: ${result.baseline} kg CO₂`}
-                  >
-                    {result.baseline}
-                  </p>
+          {simulationRun && (
+            <div className="border-t border-zinc-800/80 pt-6 animate-in fade-in duration-500 space-y-4">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="p-4 bg-zinc-950 border border-zinc-800/80 rounded-xl">
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1">Baseline Path</p>
+                  <p className="text-xl font-bold text-zinc-400 line-through">{simResults.baselineProjected} kg</p>
                 </div>
-
-                <ArrowRight
-                  className="w-8 h-8 text-green-500 mx-4 shrink-0"
-                  aria-hidden="true"
-                />
-
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-green-600 mb-1">Projected</p>
-                  <p
-                    className="text-5xl font-bold text-green-600"
-                    aria-label={`Projected: ${result.projected} kg CO₂`}
-                  >
-                    {result.projected}
-                  </p>
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl">
+                  <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-1">Simulated Twin</p>
+                  <p className="text-2xl font-black text-emerald-500">{simResults.simulatedProjected} kg</p>
+                </div>
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col justify-center">
+                  <p className="text-[10px] text-emerald-300 font-bold uppercase tracking-wider mb-1">Net Savings</p>
+                  <p className="text-xl font-extrabold text-emerald-400">-{simResults.carbonSaved} kg</p>
                 </div>
               </div>
 
-              <div className="mt-8 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
-                <p className="text-green-800 dark:text-green-300 font-medium">
-                  By committing to this scenario, you could save an additional{' '}
-                  <strong>{result.saved} kg CO₂</strong> this month!
-                </p>
-                <Button className="mt-4 bg-green-600 hover:bg-green-700">
-                  Accept Challenge
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              {/* Forecast curve line chart */}
+              <TwinForecastChart
+                baselineProjected={simResults.baselineProjected}
+                simulatedProjected={simResults.simulatedProjected}
+                days={days}
+              />
+            </div>
+          )}
+
+        </div>
+
+        {/* RIGHT COLUMN: DIGITAL TWIN VISUAL MODEL */}
+        <div className="lg:col-span-5">
+          <TwinAvatar isTwinHealthy={isTwinHealthy} />
+        </div>
+
       </div>
+
     </div>
   );
 }

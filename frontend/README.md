@@ -1,6 +1,6 @@
-# 💻 EcoTrace AI+ Frontend (Next.js PWA)
+# 💻 CarbonPulse AI+ Frontend (Next.js PWA)
 
-> **The production-grade client-side application for the EcoTrace AI+ carbon tracking platform, built with Next.js 16 and Tailwind CSS.**
+> **The production-grade client-side application for the CarbonPulse AI+ carbon tracking platform, built with Next.js 16 and Tailwind CSS.**
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js&style=flat-square)](https://nextjs.org)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind--CSS-v4-06B6D4?logo=tailwindcss&style=flat-square)](https://tailwindcss.com)
@@ -8,7 +8,7 @@
 [![Zustand](https://img.shields.io/badge/State--Management-Zustand-orange?style=flat-square)](https://github.com/pmndrs/zustand)
 [![PWA](https://img.shields.io/badge/PWA-Progressive%20Web%20App-purple?style=flat-square)](https://web.dev/explore/progressive-web-apps)
 
-The EcoTrace AI+ frontend provides a responsive, accessible, and high-performance Progressive Web Application dashboard, visual charts, and simulators designed to guide users from climate awareness to concrete action.
+The CarbonPulse AI+ frontend provides a responsive, accessible, and high-performance Progressive Web Application dashboard, visual charts, and simulators designed to guide users from climate awareness to concrete action.
 
 ---
 
@@ -46,7 +46,7 @@ The EcoTrace AI+ frontend provides a responsive, accessible, and high-performanc
 
 ### Prerequisites
 - Node.js (v18+ recommended)
-- A running instance of the EcoTrace FastAPI backend (details in the root [README](../README.md))
+- A running instance of the CarbonPulse FastAPI backend (details in the root [README](../README.md))
 
 ### 1. Install Dependencies
 ```bash
@@ -100,7 +100,7 @@ Deploying the client-side Next.js PWA to Render requires simple configurations:
 3. Set the runtime to **Node**.
 4. Set the build command to `npm install && npm run build` and the start command to `npm run start`.
 5. In the environment variables, add:
-   - `NEXT_PUBLIC_API_URL`: The URL of your deployed backend service (e.g., `https://ecotrace-backend.onrender.com/api/v1`).
+   - `NEXT_PUBLIC_API_URL`: The URL of your deployed backend service (e.g., `https://carbonpulse-backend.onrender.com/api/v1`).
 
 ---
 
@@ -112,4 +112,4 @@ The client interfaces with the FastAPI backend endpoints via `src/lib/api.ts`:
 
 ---
 
-*Developed with 💚 by the EcoTrace AI*
+*Developed with 💚 by the CarbonPulse AI+*

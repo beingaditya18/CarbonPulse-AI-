@@ -1,309 +1,378 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Metadata } from 'next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Camera, Zap, Car, Apple, ShoppingBag, Trash, Loader2 } from 'lucide-react';
-import { fetchApi, BASE_URL } from '@/lib/api';
+
+import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import { useCarbonStore } from '@/store/useCarbonStore';
+import { CategoryType } from '@/types/store';
+import { calculateSHAPExplanations } from '@/lib/shapEngine';
+import { ScoreGaugeCard } from '@/features/dashboard/components/ScoreGaugeCard';
+import { OcrScannerCard } from '@/features/dashboard/components/OcrScannerCard';
+import { ChatCoachCard } from '@/features/dashboard/components/ChatCoachCard';
+import { ManualLogDialog } from '@/features/dashboard/components/ManualLogDialog';
+import { ShapExplanationsCard } from '@/features/dashboard/components/ShapExplanationsCard';
+import { RecentLogsCard } from '@/features/dashboard/components/RecentLogsCard';
+import { TrendingDown, Check, Plus } from 'lucide-react';
+
+// Dynamically import the Recharts chart for bundle size reduction (First Contentful Paint < 0.8s)
+const HistoryChartWidget = dynamic(
+  () => import('@/features/dashboard/components/HistoryChartWidget').then((mod) => mod.HistoryChartWidget),
+  { 
+    ssr: false, 
+    loading: () => (
+      <div className="bg-zinc-900 border border-zinc-800/80 p-6 rounded-2xl h-60 animate-pulse flex items-center justify-center">
+        <span className="text-xs text-zinc-600 font-bold uppercase tracking-wider">Loading carbon timeline...</span>
+      </div>
+    )
+  }
+);
 
 /**
- * A single SHAP explanation value returned by the backend AI engine.
+ * DashboardPage is the central command center for tracking, SHAP explanations, and AI coach.
  */
-interface SHAPExplanation {
-  feature: string;
-  impact: number;
-  description: string;
-}
-
-/**
- * AI insights payload from GET /carbon/insights.
- */
-interface InsightsResponse {
-  predicted_emission: number;
-  target_date: string;
-  explanations: SHAPExplanation[];
-}
-
-/** Maps emission category names to their visual icon components. */
-const CATEGORY_ICON_MAP: Record<string, React.ReactNode> = {
-  Transportation: <Car className="w-4 h-4 text-blue-500" aria-hidden="true" />,
-  Electricity: <Zap className="w-4 h-4 text-yellow-500" aria-hidden="true" />,
-  Food: <Apple className="w-4 h-4 text-green-500" aria-hidden="true" />,
-  Shopping: <ShoppingBag className="w-4 h-4 text-purple-500" aria-hidden="true" />,
-  Waste: <Trash className="w-4 h-4 text-gray-500" aria-hidden="true" />,
-};
-
-// BASE_URL is imported from '@/lib/api'
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-
 export default function DashboardPage() {
-  const [insights, setInsights] = useState<InsightsResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState<boolean>(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { 
+    logs, 
+    user, 
+    addLog, 
+    deleteLog, 
+    challenges, 
+    completeChallenge, 
+    acceptChallenge, 
+    chatHistory, 
+    addChatMessage, 
+    clearChat 
+  } = useCarbonStore();
 
-  /** Fetches AI insights from the backend on mount. */
-  const loadInsights = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data: InsightsResponse = await fetchApi('/carbon/insights');
-      setInsights(data);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch AI insights.';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [mounted, setMounted] = useState(false);
+
+  // Modal Dialog and Visual Progress States
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [ocrScanStep, setOcrScanStep] = useState<'idle' | 'scanning' | 'success' | 'error'>('idle');
+  const [ocrFeedback, setOcrFeedback] = useState('');
+  const [chatInput, setChatInput] = useState('');
+  const [isCoachTyping, setIsCoachTyping] = useState(false);
+
+  // Core Math Calculations
+  const shapData = calculateSHAPExplanations(logs);
+  const currentEmissions = shapData.predictedEmissions;
+  const baseline = user.baselineEmissions;
+  const ratio = baseline > 0 ? currentEmissions / baseline : 1.0;
+
+  // Visual grade calculation based on relative carbon emission ratio
+  let grade = 'C';
+  let gradeColor = 'text-yellow-500';
+  if (ratio < 0.7) {
+    grade = 'A';
+    gradeColor = 'text-emerald-500';
+  } else if (ratio < 0.85) {
+    grade = 'B';
+    gradeColor = 'text-green-500';
+  } else if (ratio >= 1.0) {
+    grade = 'D';
+    gradeColor = 'text-red-500';
+  }
 
   useEffect(() => {
-    loadInsights();
-  }, [loadInsights]);
+    setMounted(true);
+  }, []);
 
-  /**
-   * Handles receipt image selection and upload.
-   * Validates file type and size client-side before posting to the backend.
-   */
-  const handleReceiptUpload = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
+  if (!mounted) return null;
 
-      setUploadError(null);
-      setUploadSuccess(false);
+  // Format Recharts daily aggregates for history chart
+  const formatChartData = () => {
+    const weeklyData = [
+      { name: 'Week 1', transportation: 0, electricity: 0, food: 0, shopping: 0, waste: 0 },
+      { name: 'Week 2', transportation: 0, electricity: 0, food: 0, shopping: 0, waste: 0 },
+      { name: 'Week 3', transportation: 0, electricity: 0, food: 0, shopping: 0, waste: 0 },
+      { name: 'Week 4', transportation: 0, electricity: 0, food: 0, shopping: 0, waste: 0 },
+    ];
 
-      // Client-side validation
-      if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-        setUploadError('Only JPEG, PNG, and WebP images are supported.');
-        return;
+    const now = new Date();
+    logs.forEach((log) => {
+      const logDate = new Date(log.logged_date);
+      const diffDays = Math.floor((now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      let weekIdx = -1;
+      if (diffDays >= 0 && diffDays < 7) weekIdx = 3;
+      else if (diffDays >= 7 && diffDays < 14) weekIdx = 2;
+      else if (diffDays >= 14 && diffDays < 21) weekIdx = 1;
+      else if (diffDays >= 21 && diffDays < 30) weekIdx = 0;
+
+      if (weekIdx !== -1) {
+        weeklyData[weekIdx][log.category] += log.emission_amount;
       }
-      if (file.size > MAX_UPLOAD_BYTES) {
-        setUploadError('File size must be under 5 MB.');
-        return;
+    });
+
+    return weeklyData.map(w => ({
+      ...w,
+      transportation: Math.round(w.transportation),
+      electricity: Math.round(w.electricity),
+      food: Math.round(w.food),
+      shopping: Math.round(w.shopping),
+      waste: Math.round(w.waste),
+    }));
+  };
+
+  const chartData = formatChartData();
+
+  // Call receipt OCR endpoint with user file upload
+  const handleReceiptUpload = async (file: File) => {
+    setOcrScanStep('scanning');
+    setOcrFeedback('Uploading receipt to secure GCS bucket...');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/carbon/receipt', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.json().catch(() => ({}));
+        throw new Error(errorText.detail || 'Vision API processing failure.');
       }
 
-      setUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
+      const parsedResult = await res.json();
+      
+      const logged = addLog({
+        category: parsedResult.category,
+        emission_amount: parsedResult.emission_amount,
+        source: 'ocr',
+        description: parsedResult.description || 'Receipt Scan Activity',
+      });
 
-        const token =
-          typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+      setOcrScanStep('success');
+      setOcrFeedback(`OCR Successful! Logged ${logged.emission_amount} kg CO₂ into ${logged.category}.`);
+      
+      setTimeout(() => setOcrScanStep('idle'), 3500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      setOcrScanStep('error');
+      setOcrFeedback(`Error: ${msg}`);
+      setTimeout(() => setOcrScanStep('idle'), 4000);
+    }
+  };
 
-        const response = await fetch(`${BASE_URL}/carbon/receipt`, {
-          method: 'POST',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: formData,
-          // ⚠️ Do NOT set Content-Type manually — browser must set the multipart boundary.
-        });
+  // Demo scan helper to run pipeline visuals without file dialog
+  const handleDemoScan = async () => {
+    setOcrScanStep('scanning');
+    setOcrFeedback('Triggering OCR sandbox pipelines...');
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.detail ?? 'Receipt upload failed.');
-        }
+    try {
+      const demoFormData = new FormData();
+      // Create empty mock file
+      const blob = new Blob(['mock-data'], { type: 'image/png' });
+      const file = new File([blob], 'gas_station_invoice.png', { type: 'image/png' });
+      demoFormData.append('file', file);
 
-        setUploadSuccess(true);
-        // Refresh insights to reflect the newly created log
-        await loadInsights();
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Receipt upload failed.';
-        setUploadError(message);
-      } finally {
-        setUploading(false);
-        // Reset input so same file can be re-uploaded
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    },
-    [loadInsights],
-  );
+      const res = await fetch('/api/carbon/receipt', {
+        method: 'POST',
+        body: demoFormData,
+      });
+
+      if (!res.ok) throw new Error('Demo endpoint failed.');
+
+      const parsedResult = await res.json();
+      
+      const logged = addLog({
+        category: parsedResult.category,
+        emission_amount: parsedResult.emission_amount,
+        source: 'ocr',
+        description: parsedResult.description || 'Whole Foods Organic Receipt',
+      });
+
+      setOcrScanStep('success');
+      setOcrFeedback(`OCR Sandbox Success! Logged ${logged.emission_amount} kg CO₂ into ${logged.category}.`);
+      setTimeout(() => setOcrScanStep('idle'), 3500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Demo run failed';
+      setOcrScanStep('error');
+      setOcrFeedback(`Error: ${msg}`);
+      setTimeout(() => setOcrScanStep('idle'), 4000);
+    }
+  };
+
+  // Add Manual log entries
+  const handleManualSubmit = (category: CategoryType, amount: number, description: string) => {
+    addLog({
+      category,
+      emission_amount: amount,
+      source: 'manual',
+      description: description || `Manual ${category} entry`,
+    });
+  };
+
+  // Connect AI Coach conversation dynamically to Edge Gemini Chat Endpoint
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMessage = chatInput.trim();
+    addChatMessage('user', userMessage);
+    setChatInput('');
+    setIsCoachTyping(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...chatHistory, { role: 'user', content: userMessage }],
+          userLogs: logs.slice(0, 10), // Pass logs as analytical context
+        }),
+      });
+
+      if (!res.ok) throw new Error('Coach service connection failed.');
+
+      const data = await res.json();
+      addChatMessage('assistant', data.content);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Connection failed';
+      addChatMessage('assistant', `Coach Offline. Quick Tip: Switch to composting or public transit to save up to 40 kg CO₂ monthly. [Details: ${msg}]`);
+    } finally {
+      setIsCoachTyping(false);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* ── Page Header ─────────────────────────────────────────────────── */}
-      <header className="flex justify-between items-center">
+      
+      {/* HEADER BAR */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome back, Eco Hero!</h1>
-          <p className="text-muted-foreground mt-1 text-lg">
-            Here is your carbon footprint breakdown.
+          <h1 className="text-3xl font-extrabold tracking-tight">Eco Dashboard</h1>
+          <p className="text-zinc-500 mt-1">
+            Track, explain, and manage your localized carbon emissions.
           </p>
         </div>
-
-        {/* Receipt upload — fully functional with validation feedback */}
-        <div className="flex flex-col items-end gap-1">
-          <label
-            htmlFor="receipt-upload"
-            className={[
-              'flex items-center gap-2 px-4 py-2 rounded-lg font-medium shadow-sm transition-all',
-              'outline-none focus-within:ring-2 focus-within:ring-green-500 focus-within:ring-offset-2',
-              uploading
-                ? 'bg-green-400 cursor-not-allowed text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white cursor-pointer',
-            ].join(' ')}
-            aria-label="Upload a receipt to auto-log carbon emissions"
-          >
-            {uploading ? (
-              <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
-            ) : (
-              <Camera className="w-5 h-5" aria-hidden="true" />
-            )}
-            <span>{uploading ? 'Processing…' : 'Scan Receipt'}</span>
-            <input
-              id="receipt-upload"
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-              onChange={handleReceiptUpload}
-              disabled={uploading}
-              aria-describedby="upload-feedback"
-            />
-          </label>
-
-          {/* Upload feedback — visible to all users including screen readers */}
-          <div id="upload-feedback" role="status" aria-live="polite" className="text-xs">
-            {uploadError && <span className="text-red-500">{uploadError}</span>}
-            {uploadSuccess && (
-              <span className="text-green-600 font-medium">
-                ✓ Receipt logged successfully!
-              </span>
-            )}
-          </div>
-        </div>
+        <button
+          onClick={() => setShowAddDialog(true)}
+          className="bg-zinc-100 hover:bg-white text-zinc-950 px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+          aria-label="Add manual carbon footprint log entry"
+        >
+          <Plus className="w-4 h-4" /> Log Manual
+        </button>
       </header>
 
-      {/* ── Stats Overview ───────────────────────────────────────────────── */}
-      <section aria-label="Carbon savings summary">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-green-500/20 shadow-sm bg-gradient-to-br from-white to-green-50/50 dark:from-zinc-900 dark:to-green-900/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Total Saved
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold text-green-600 dark:text-green-500">
-                124{' '}
-                <span className="text-xl font-normal text-muted-foreground">kg CO₂</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2 font-medium flex items-center gap-1">
-                <span className="text-green-600" aria-label="12% increase">↑ 12%</span> from last month
-              </p>
-            </CardContent>
-          </Card>
+      {/* OCR UPLOADER CARD */}
+      <OcrScannerCard
+        ocrScanStep={ocrScanStep}
+        ocrFeedback={ocrFeedback}
+        onReceiptUpload={handleReceiptUpload}
+        onDemoScan={handleDemoScan}
+      />
 
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Current Level
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3">
-                <div className="text-4xl font-bold" aria-label="Level 4">
-                  Level 4
-                </div>
-                <Badge
-                  variant="secondary"
-                  className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                >
-                  Seedling
-                </Badge>
-              </div>
-              <Progress
-                value={65}
-                className="h-2 mt-4"
-                aria-label="Progress to next level: 65%"
+      {/* GRID OVERVIEW */}
+      <main className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        {/* Left main grids */}
+        <div className="lg:col-span-8 space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <div className="md:col-span-5">
+              <ScoreGaugeCard
+                currentEmissions={currentEmissions}
+                baseline={baseline}
+                ratio={ratio}
+                grade={grade}
+                gradeColor={gradeColor}
               />
-              <p className="text-xs text-muted-foreground mt-2">35 points to next level</p>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="md:col-span-7">
+              <HistoryChartWidget chartData={chartData} />
+            </div>
+          </div>
 
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Community Impact
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold">
-                4,592{' '}
-                <span className="text-xl font-normal text-muted-foreground">Trees</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Saved collectively by EcoTrace users this week.
-              </p>
-            </CardContent>
-          </Card>
+          {/* Attributions and Log Table */}
+          <ShapExplanationsCard explanations={shapData.explanations} />
+          <RecentLogsCard logs={logs} onDeleteLog={deleteLog} />
         </div>
-      </section>
 
-      {/* ── SHAP AI Explanations ─────────────────────────────────────────── */}
-      <section aria-label="AI-powered carbon insights">
-        <h2 className="text-2xl font-bold mb-4">Why is your footprint high?</h2>
-        <Card className="shadow-sm border border-orange-200 dark:border-orange-900/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-orange-500" aria-hidden="true" />
-              Advanced AI Insights
-            </CardTitle>
-            <CardDescription>
-              Powered by Real-time SHAP Values (Scikit-Learn Random Forest)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {loading && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-              >
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                <span>Running Random Forest calculations…</span>
-              </div>
-            )}
+        {/* Right sidebar */}
+        <aside className="lg:col-span-4 space-y-8">
+          {/* Action cards checklist */}
+          <section className="bg-zinc-900 border border-zinc-800/80 p-6 rounded-2xl space-y-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl"></div>
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-1.5">
+                <TrendingDown className="w-5 h-5 text-emerald-500" /> Next Reduction Actions
+              </h2>
+              <p className="text-xs text-zinc-500 mt-1 font-semibold uppercase tracking-wider">What to do next</p>
+            </div>
 
-            {error && (
-              <div role="alert" className="text-sm text-red-500 font-medium">
-                Error loading AI Insights: {error}
-              </div>
-            )}
+            <div className="space-y-3">
+              {challenges
+                .filter((c) => c.status !== 'completed')
+                .slice(0, 3)
+                .map((challenge) => (
+                  <div 
+                    key={challenge.id} 
+                    className={`p-4 rounded-xl border flex flex-col justify-between gap-3 transition-colors ${
+                      challenge.status === 'accepted' 
+                        ? 'bg-emerald-500/5 border-emerald-500/20' 
+                        : 'bg-zinc-950 border-zinc-800/80'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="font-bold text-sm text-zinc-200 leading-tight">{challenge.title}</span>
+                        <span className="text-[10px] shrink-0 uppercase tracking-widest font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                          -{challenge.potential_impact} kg/mo
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-1 leading-relaxed font-semibold">{challenge.description}</p>
+                    </div>
 
-            {!loading && !error && insights?.explanations.map((exp: SHAPExplanation, i: number) => (
-              <div key={`${exp.feature}-${i}`} className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 font-medium">
-                    {CATEGORY_ICON_MAP[exp.feature] ?? (
-                      <Zap className="w-4 h-4 text-gray-500" aria-hidden="true" />
-                    )}
-                    <span>{exp.feature}</span>
+                    <div className="flex items-center gap-2 justify-end">
+                      {challenge.status === 'accepted' ? (
+                        <button
+                          onClick={() => completeChallenge(challenge.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md cursor-pointer"
+                        >
+                          Complete Challenge
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => acceptChallenge(challenge.id)}
+                          className="border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                        >
+                          Accept Challenge
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-sm font-bold text-orange-600">
-                    {exp.impact}% impact
-                  </span>
-                </div>
-                <Progress
-                  value={exp.impact}
-                  className="h-2 bg-gray-100 dark:bg-gray-800"
-                  aria-label={`${exp.feature} impact: ${exp.impact}%`}
-                />
-                <p className="text-sm text-muted-foreground mt-1">{exp.description}</p>
-              </div>
-            ))}
+                ))}
 
-            {!loading && !error && insights?.explanations.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No significant insights yet. Start logging your activities to see your AI breakdown.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+              {challenges.filter((c) => c.status !== 'completed').length === 0 && (
+                <div className="text-center py-4 bg-emerald-500/5 rounded-xl border border-emerald-500/10">
+                  <Check className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                  <p className="text-xs text-emerald-400 font-bold">All challenges conquerered! Check achievements vault.</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Conversations assistant */}
+          <ChatCoachCard
+            chatHistory={chatHistory}
+            chatInput={chatInput}
+            setChatInput={setChatInput}
+            isCoachTyping={isCoachTyping}
+            onSendMessage={handleSendMessage}
+            onClearChat={clearChat}
+          />
+        </aside>
+
+      </main>
+
+      {/* POPUP LOG INPUT DIALOG */}
+      <ManualLogDialog
+        isOpen={showAddDialog}
+        onClose={() => setShowAddDialog(false)}
+        onSubmit={handleManualSubmit}
+      />
+
     </div>
   );
 }

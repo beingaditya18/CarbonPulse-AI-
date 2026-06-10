@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "EcoTrace AI+ — Intelligent Carbon Footprint Tracker",
-    template: "%s | EcoTrace AI+",
+    default: "CarbonPulse AI+ — Intelligent Carbon Footprint Tracker",
+    template: "%s | CarbonPulse AI+",
   },
   description:
     "Track and reduce your carbon footprint with Explainable AI (SHAP), Digital Carbon Twin forecasting, OCR receipt intelligence, and community gamification.",
@@ -29,9 +29,9 @@ export const metadata: Metadata = {
     "digital twin",
     "climate action",
   ],
-  authors: [{ name: "EcoTrace AI+" }],
+  authors: [{ name: "CarbonPulse AI+" }],
   openGraph: {
-    title: "EcoTrace AI+ — Intelligent Carbon Footprint Tracker",
+    title: "CarbonPulse AI+ — Intelligent Carbon Footprint Tracker",
     description:
       "From Awareness to Action. The intelligent carbon tracking platform powered by Explainable AI and Digital Twins.",
     type: "website",
@@ -51,7 +51,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
