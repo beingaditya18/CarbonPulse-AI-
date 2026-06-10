@@ -27,11 +27,14 @@ export default function OnboardingPage() {
   const [processingPercent, setProcessingPercent] = useState(0);
 
   useEffect(() => {
-    setMounted(true);
-    if (user.onboardingComplete) {
-      setName(user.name);
-      setEmail(user.email);
-    }
+    const timer = setTimeout(() => {
+      setMounted(true);
+      if (user.onboardingComplete) {
+        setName(user.name);
+        setEmail(user.email);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [user]);
 
   // Run simulated ML pipeline training when reaching step 7
@@ -48,7 +51,9 @@ export default function OnboardingPage() {
       ];
 
       let currentMsgIdx = 0;
-      setProgressMsg(messages[0]);
+      const initTimer = setTimeout(() => {
+        setProgressMsg(messages[0]);
+      }, 0);
 
       const interval = setInterval(() => {
         setProcessingPercent((prev) => {
@@ -66,7 +71,10 @@ export default function OnboardingPage() {
         });
       }, 50);
 
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(initTimer);
+        clearInterval(interval);
+      };
     }
   }, [step]);
 

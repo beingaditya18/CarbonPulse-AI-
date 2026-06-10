@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCarbonStore } from '@/store/useCarbonStore';
-import { Settings, User, RefreshCw, Trash2, HelpCircle, Save, Check } from 'lucide-react';
+import { User, RefreshCw, Trash2, Save, Check } from 'lucide-react';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -17,15 +17,16 @@ export default function SettingsPage() {
 
   // Preference states
   const [unit, setUnit] = useState<'kg' | 'lbs'>('kg');
-  const [vertexMock, setVertexMock] = useState(true);
 
   useEffect(() => {
-    setMounted(true);
-    if (user.onboardingComplete) {
-      setName(user.name);
-      setEmail(user.email);
-      setBaseline(user.baselineEmissions);
-    }
+    setTimeout(() => {
+      setMounted(true);
+      if (user.onboardingComplete) {
+        setName(user.name);
+        setEmail(user.email);
+        setBaseline(user.baselineEmissions);
+      }
+    }, 0);
   }, [user]);
 
   const handleSave = (e: React.FormEvent) => {

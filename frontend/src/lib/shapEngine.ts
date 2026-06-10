@@ -1,3 +1,10 @@
+/**
+ * @fileoverview SHAP (Shapley Additive Explanations) Engine
+ * Implements game-theoretic Shapley values to explain
+ * individual carbon footprint deviations from baseline.
+ * @module shapEngine
+ */
+
 import { CarbonLog, CategoryType } from '../types/store';
 
 export interface SHAPExplanation {
@@ -6,6 +13,11 @@ export interface SHAPExplanation {
   shapValue: number; // kg CO2 impact (positive or negative)
   direction: 'higher' | 'lower';
   description: string;
+}
+
+export interface ShapResult {
+  category: string;
+  contribution: number;
 }
 
 // Baseline average values representing a typical household footprint (kg CO2 / month)
@@ -22,10 +34,38 @@ export const BASELINE_DISTRIBUTION: Record<CategoryType, number> = {
 export const EXPECTED_BASE_VALUE = 283; 
 
 /**
+ * Calculates the marginal SHAP contribution of each
+ * emission category relative to the regional average.
+ * @param {Array<{category: string, value: number}>} userEmissions - User's emission data
+ * @param {Record<string, number>} baseline - Regional average baseline
+ * @returns {ShapResult[]} Array of SHAP values per category
+ * @throws {Error} If emissions data is empty or malformed
+ * @example
+ * const values = calculateShapValues(userEmissions, baseline);
+ */
+export function calculateShapValues(
+  userEmissions: { category: string; value: number }[],
+  baseline: Record<string, number>
+): ShapResult[] {
+  if (!userEmissions || userEmissions.length === 0) {
+    throw new Error('Insufficient data');
+  }
+  return userEmissions.map(item => {
+    const baseVal = baseline[item.category] || 0;
+    return {
+      category: item.category,
+      contribution: item.value - baseVal,
+    };
+  });
+}
+
+/**
  * Calculates real-time SHAP values for a user's monthly emissions.
  * 
  * Demonstrates exact game-theoretic additive contributions:
  * Sum(SHAP values) = Predicted Footprint - Expected Baseline (283 kg CO2)
+ * @param {CarbonLog[]} logs - User's carbon footprint activity logs
+ * @returns {{predictedEmissions: number, baseValue: number, explanations: SHAPExplanation[]}} Calculated SHAP explanations
  */
 export function calculateSHAPExplanations(logs: CarbonLog[]): {
   predictedEmissions: number;

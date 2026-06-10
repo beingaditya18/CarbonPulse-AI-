@@ -8,9 +8,7 @@ import {
   TreePine, 
   Zap, 
   MapPin, 
-  Search, 
   Compass, 
-  Check, 
   Globe 
 } from 'lucide-react';
 
@@ -35,12 +33,15 @@ const GREEN_LOCATIONS: GreenLocation[] = [
 export default function CommunityPage() {
   const { user } = useCarbonStore();
   const [mounted, setMounted] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<GreenLocation | null>(GREEN_LOCATIONS[0]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'ev_station' | 'recycling' | 'compost' | 'organic_farm'>('all');
 
   useEffect(() => {
-    setMounted(true);
+    const timer = setTimeout(() => {
+      setMounted(true);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!mounted) return null;
@@ -170,19 +171,23 @@ export default function CommunityPage() {
         </section>
 
         {/* GOOGLE MAPS LOCATOR */}
-        <section className="lg:col-span-7 bg-zinc-900 border border-zinc-800/80 p-6 rounded-2xl space-y-6 flex flex-col h-[520px]">
-          <div className="flex justify-between items-start gap-4">
-            <div>
-              <h2 className="text-lg font-bold flex items-center gap-1.5">
-                <Globe className="w-5 h-5 text-emerald-500 animate-pulse" /> Google Maps Eco-Locator
-              </h2>
-              <p className="text-xs text-zinc-500 mt-1 font-semibold uppercase tracking-wider">Locate sustainability infrastructure</p>
-            </div>
+        <section aria-label="Eco-friendly locations near you" className="lg:col-span-7 bg-zinc-900 border border-zinc-800/80 p-6 rounded-2xl space-y-6 flex flex-col min-h-[580px]">
+          <div>
+            <h2 id="map-heading" className="text-lg font-bold flex items-center gap-1.5">
+              <Globe className="w-5 h-5 text-emerald-500 animate-pulse" /> Eco-Locator Map
+            </h2>
+            <p id="map-description" className="sr-only">
+              Interactive map showing eco-friendly businesses, green spaces, and sustainability points of interest in your area. Use arrow keys to navigate the map.
+            </p>
           </div>
 
           {/* Map and Pins List Split */}
-          <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
-            
+          <div
+            role="application"
+            aria-labelledby="map-heading"
+            aria-describedby="map-description"
+            className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden"
+          >
             {/* Left lists */}
             <div className="w-full md:w-52 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
               {/* Filter */}
@@ -260,10 +265,23 @@ export default function CommunityPage() {
               {!selectedLocation && (
                 <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Select a facility to pin coordinates</p>
               )}
-              
             </div>
-
           </div>
+
+          {/* Accessible list fallback */}
+          <details className="mt-4 border-t border-zinc-800/80 pt-4">
+            <summary className="text-xs font-bold text-emerald-500 cursor-pointer outline-none hover:underline">
+              View locations as list
+            </summary>
+            <ul aria-label="Eco-friendly locations list" className="mt-2 space-y-2 text-xs text-zinc-400">
+              {filteredLocations.map(loc => (
+                <li key={loc.id} className="p-2 bg-zinc-950 border border-zinc-800 rounded-lg">
+                  <strong className="block text-zinc-200">{loc.name}</strong>
+                  <span>{loc.address}</span> | <span className="capitalize">{loc.type.replace('_', ' ')}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         </section>
 
       </div>

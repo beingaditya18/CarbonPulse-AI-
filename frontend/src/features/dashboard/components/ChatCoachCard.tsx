@@ -53,10 +53,19 @@ export function ChatCoachCard({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm scrollbar-thin scrollbar-thumb-zinc-800">
+      <div 
+        className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm scrollbar-thin scrollbar-thumb-zinc-800"
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-label="AI Climate Coach conversation"
+        aria-relevant="additions"
+      >
         {chatHistory.map((msg) => (
           <div 
             key={msg.id} 
+            role="article"
+            aria-label={`${msg.role === 'assistant' ? 'AI Coach' : 'You'}: ${msg.content}`}
             className={`flex items-start gap-2.5 max-w-[85%] ${msg.role === 'user' ? 'ml-auto flex-row-reverse' : ''}`}
           >
             <div className={`p-2 rounded-xl flex items-center justify-center shrink-0 ${
@@ -75,8 +84,14 @@ export function ChatCoachCard({
         ))}
 
         {isCoachTyping && (
-          <div className="flex items-center gap-2 text-zinc-500 text-xs font-semibold animate-pulse pl-1">
+          <div 
+            role="status"
+            aria-live="polite"
+            aria-label="AI Coach is thinking"
+            className="flex items-center gap-2 text-zinc-500 text-xs font-semibold animate-pulse pl-1"
+          >
             <Sparkles className="w-4 h-4 text-emerald-500 animate-spin" />
+            <span className="sr-only">AI Coach is generating a response...</span>
             <span>Coach is typing responses...</span>
           </div>
         )}

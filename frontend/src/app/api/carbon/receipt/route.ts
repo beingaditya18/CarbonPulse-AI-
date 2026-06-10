@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/utils/rateLimiter';
 import { sanitizeInput } from '@/utils/sanitize';
+import { validateEnvironment } from '@/lib/env';
+import { validateFileUpload } from '@/utils/validators';
 
 export const runtime = 'edge';
 
 const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || '';
 
-// Security boundaries configuration
-const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB maximum
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+/**
+ * Converts an ArrayBuffer to a Base64-encoded string.
+ * Native Edge runtime implementation avoiding Node.js Buffer global.
+ * @param {ArrayBuffer} buffer - Raw file bytes.
+ * @returns {string} Base64 encoded string.
+ */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
 /**
  * Next.js Edge Route Handler for receipt OCR ingestion.
@@ -17,8 +31,11 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
  * @param {NextRequest} req - Inbound network request.
  * @returns {Promise<NextResponse>} Structured JSON response.
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Validate required system environment variables at startup
+    validateEnvironment();
+
     // 1. Rate Limiting Check
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     if (!checkRateLimit(ip)) {
@@ -36,19 +53,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ detail: 'No receipt file provided.' }, { status: 400 });
     }
 
-    // 3. File Size Validation
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      return NextResponse.json({ detail: 'File size exceeds maximum allowed limit (4MB).' }, { status: 400 });
-    }
-
-    // 4. MIME Type Validation
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-      return NextResponse.json({ detail: 'Invalid file format. Only JPEG, PNG, and WebP are allowed.' }, { status: 400 });
-    }
-
     // Read file as ArrayBuffer
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+
+    // 3. Strict MIME and File Size validation (Magic Bytes verification)
+    const fileValidation = validateFileUpload(bytes, file.type);
+    if (!fileValidation.valid) {
+      return NextResponse.json({
+        detail: `File validation failed: ${fileValidation.reason}`
+      }, { status: 400 });
+    }
 
     // If no Google Vision API key, run smart regex fallback
     if (!GOOGLE_VISION_API_KEY) {
@@ -84,7 +98,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Google Cloud Vision API Request (Edge runtime compatible)
-    const base64Image = buffer.toString('base64');
+    const base64Image = arrayBufferToBase64(bytes);
     const visionUrl = `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`;
 
     const response = await fetch(visionUrl, {

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Digital Carbon Twin — OLS Regression Engine
+ * Fits Ordinary Least Squares linear regression over the
+ * user's emission history to project future trajectories.
+ * @module twinRegression
+ */
+
 import { CarbonLog, CategoryType } from '../types/store';
 
 export interface SimulationResult {
@@ -7,12 +14,122 @@ export interface SimulationResult {
   scenarioDescription: string;
 }
 
+export interface EmissionDataPoint {
+  x: number;
+  y: number;
+}
+
+export interface RegressionModel {
+  slope: number;
+  intercept: number;
+  rSquared: number;
+}
+
+export interface ProjectionResult {
+  baseline: number[];
+  simulated: number[];
+}
+
+export type ScenarioParams = Record<string, number>;
+
+/**
+ * Fits OLS regression model: y = mx + c
+ * @param {EmissionDataPoint[]} history - Time-series logs
+ * @returns {RegressionModel} Slope, intercept, and R² score
+ * @throws {Error} If fewer than 2 data points provided
+ */
+export function fitRegression(history: EmissionDataPoint[]): RegressionModel {
+  if (!history || history.length < 2) {
+    throw new Error('Insufficient data points to fit regression. At least 2 points are required.');
+  }
+
+  const n = history.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+
+  for (const pt of history) {
+    sumX += pt.x;
+    sumY += pt.y;
+    sumXY += pt.x * pt.y;
+    sumXX += pt.x * pt.x;
+  }
+
+  const denominator = n * sumXX - sumX * sumX;
+  let slope = 0;
+  let intercept = 0;
+
+  if (Math.abs(denominator) > 1e-9) {
+    slope = (n * sumXY - sumX * sumY) / denominator;
+    intercept = (sumY - slope * sumX) / n;
+  } else {
+    slope = 0;
+    intercept = sumY / n;
+  }
+
+  // Calculate R² (R-squared) score
+  const meanY = sumY / n;
+  let ssTot = 0;
+  let ssRes = 0;
+  for (const pt of history) {
+    const predicted = slope * pt.x + intercept;
+    ssTot += Math.pow(pt.y - meanY, 2);
+    ssRes += Math.pow(pt.y - predicted, 2);
+  }
+
+  let rSquared = 1;
+  if (ssTot > 1e-9) {
+    rSquared = 1 - ssRes / ssTot;
+  }
+  // Clamp R² score to [0, 1]
+  rSquared = Math.max(0, Math.min(1, rSquared));
+
+  return { slope, intercept, rSquared };
+}
+
+/**
+ * Projects emissions for a future time horizon.
+ * @param {RegressionModel} model - Fitted regression model
+ * @param {number} days - Forecast horizon (30, 60, or 90)
+ * @param {ScenarioParams} [scenario] - Optional reduction params
+ * @returns {ProjectionResult} Baseline and simulated trajectories
+ */
+export function projectEmissions(
+  model: RegressionModel,
+  days: number,
+  scenario?: ScenarioParams
+): ProjectionResult {
+  const baseline: number[] = [];
+  const simulated: number[] = [];
+
+  let reductionFactor = 0;
+  if (scenario) {
+    for (const val of Object.values(scenario)) {
+      reductionFactor += val;
+    }
+  }
+
+  for (let i = 1; i <= days; i++) {
+    const dayVal = Math.max(0, model.slope * i + model.intercept);
+    baseline.push(dayVal);
+    simulated.push(dayVal * (1 - reductionFactor));
+  }
+
+  return { baseline, simulated };
+}
+
 /**
  * Fits a simple linear regression trendline on the user's daily emission totals
  * and forecasts the carbon trajectory over the next N days.
  * 
  * Then applies scenario reduction factor:
  * reduction_factor = (category_total / overall_total) * (reduction_percentage / 100)
+ * @param {CarbonLog[]} logs - User's carbon activity logs
+ * @param {CategoryType} categoryToReduce - The category targeted for reduction
+ * @param {number} reductionPercentage - Reduction target percentage (0-100)
+ * @param {number} daysToSimulate - Time scope to model
+ * @returns {SimulationResult} Projection stats and scenario summary description
  */
 export function simulateTwinEmissions(
   logs: CarbonLog[],

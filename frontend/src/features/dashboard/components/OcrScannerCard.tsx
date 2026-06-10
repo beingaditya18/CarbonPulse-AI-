@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, ChangeEvent } from 'react';
+import { useRef, ChangeEvent, KeyboardEvent, DragEvent } from 'react';
 import { Camera, Loader2, Check, AlertCircle } from 'lucide-react';
 
 interface OcrScannerCardProps {
@@ -25,15 +25,15 @@ export function OcrScannerCard({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Type validation
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      alert('Only JPEG, PNG, and WebP receipt images are supported.');
+    // Type validation (including PDF)
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+      alert('Only JPEG, PNG, WebP, and PDF files are supported.');
       return;
     }
 
-    // Size check (< 4MB)
-    if (file.size > 4 * 1024 * 1024) {
-      alert('File size exceeds 4MB security limit.');
+    // Size check (< 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size exceeds 5MB security limit.');
       return;
     }
 
@@ -45,6 +45,35 @@ export function OcrScannerCard({
 
   const triggerFileSelect = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+      alert('Only JPEG, PNG, WebP, and PDF files are supported.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size exceeds 5MB security limit.');
+      return;
+    }
+
+    onReceiptUpload(file);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      triggerFileSelect();
+    }
   };
 
   return (
@@ -61,29 +90,6 @@ export function OcrScannerCard({
         </div>
 
         <div className="flex items-center gap-3">
-          <input
-            id="receipt-file-uploader"
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/jpeg,image/png,image/webp"
-            className="sr-only"
-            disabled={ocrScanStep === 'scanning'}
-          />
-          <button
-            onClick={triggerFileSelect}
-            disabled={ocrScanStep === 'scanning'}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:bg-emerald-800 disabled:cursor-not-allowed"
-            aria-label="Upload utility bill or receipt image"
-          >
-            {ocrScanStep === 'scanning' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Camera className="w-4 h-4" />
-            )}
-            <span>Upload Receipt</span>
-          </button>
-          
           <button
             onClick={onDemoScan}
             disabled={ocrScanStep === 'scanning'}
@@ -91,6 +97,38 @@ export function OcrScannerCard({
           >
             Demo OCR Scan
           </button>
+        </div>
+      </div>
+
+      {/* DRAG AND DROP ZONE */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload receipt or utility bill. Accepted formats: JPEG, PNG, WebP, PDF. Maximum size: 5MB."
+        aria-describedby="upload-instructions"
+        onKeyDown={handleKeyDown}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onClick={triggerFileSelect}
+        className="border-2 border-dashed border-zinc-850 hover:border-emerald-500/50 hover:bg-zinc-950/20 transition-all p-8 rounded-xl text-center cursor-pointer"
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={handleFileChange}
+          className="sr-only"
+          disabled={ocrScanStep === 'scanning'}
+        />
+        <p id="upload-instructions" className="sr-only">
+          Drag and drop a receipt file here, or press Enter to open the file picker. Supported formats are JPEG, PNG, WebP, and PDF files up to 5 megabytes.
+        </p>
+        <div className="flex flex-col items-center justify-center gap-2">
+          <Camera className="w-8 h-8 text-zinc-650" />
+          <span className="text-sm font-bold text-zinc-300">Drag & drop files here or click to browse</span>
+          <span className="text-xs text-zinc-500">Supports JPEG, PNG, WebP, PDF (Max 5MB)</span>
         </div>
       </div>
 
@@ -119,6 +157,18 @@ export function OcrScannerCard({
             </div>
           )}
         </div>
+      )}
+
+      {/* Screen Reader Alert Error State */}
+      {ocrScanStep === 'error' && (
+        <p
+          role="alert"
+          aria-live="assertive"
+          id="upload-error"
+          className="sr-only"
+        >
+          {ocrFeedback}
+        </p>
       )}
     </div>
   );

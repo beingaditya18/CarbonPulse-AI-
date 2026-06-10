@@ -1,6 +1,7 @@
 'use client';
 
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
+import { AccessibleChart } from '@/components/charts/AccessibleChart';
 
 interface HistoryChartWidgetProps {
   chartData: Array<{
@@ -33,21 +34,26 @@ export function HistoryChartWidget({ chartData }: HistoryChartWidgetProps) {
       </div>
 
       <div className="h-44 w-full mt-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-            <XAxis dataKey="name" stroke="#52525b" fontSize={11} tickLine={false} />
-            <YAxis stroke="#52525b" fontSize={11} tickLine={false} />
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px' }}
-              labelStyle={{ color: '#a1a1aa', fontWeight: 'bold' }}
-            />
-            <Area type="monotone" dataKey="transportation" stackId="1" stroke={CATEGORY_COLORS.transportation} fill={CATEGORY_COLORS.transportation} fillOpacity={0.2} />
-            <Area type="monotone" dataKey="electricity" stackId="1" stroke={CATEGORY_COLORS.electricity} fill={CATEGORY_COLORS.electricity} fillOpacity={0.2} />
-            <Area type="monotone" dataKey="food" stackId="1" stroke={CATEGORY_COLORS.food} fill={CATEGORY_COLORS.food} fillOpacity={0.2} />
-            <Area type="monotone" dataKey="shopping" stackId="1" stroke={CATEGORY_COLORS.shopping} fill={CATEGORY_COLORS.shopping} fillOpacity={0.2} />
-            <Area type="monotone" dataKey="waste" stackId="1" stroke={CATEGORY_COLORS.waste} fill={CATEGORY_COLORS.waste} fillOpacity={0.2} />
-          </AreaChart>
-        </ResponsiveContainer>
+        <AccessibleChart
+          title="Emissions History stacked area chart"
+          summary="This stacked area chart shows your weekly carbon emissions breakdown in kilograms of CO2 over the last 4 weeks. Category keys include Transportation, Electricity, Food, Shopping, and Waste."
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <XAxis dataKey="name" stroke="#52525b" fontSize={11} tickLine={false} />
+              <YAxis stroke="#52525b" fontSize={11} tickLine={false} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px' }}
+                labelStyle={{ color: '#a1a1aa', fontWeight: 'bold' }}
+              />
+              <Area type="monotone" dataKey="transportation" stackId="1" stroke={CATEGORY_COLORS.transportation} fill={CATEGORY_COLORS.transportation} fillOpacity={0.2} />
+              <Area type="monotone" dataKey="electricity" stackId="1" stroke={CATEGORY_COLORS.electricity} fill={CATEGORY_COLORS.electricity} fillOpacity={0.2} />
+              <Area type="monotone" dataKey="food" stackId="1" stroke={CATEGORY_COLORS.food} fill={CATEGORY_COLORS.food} fillOpacity={0.2} />
+              <Area type="monotone" dataKey="shopping" stackId="1" stroke={CATEGORY_COLORS.shopping} fill={CATEGORY_COLORS.shopping} fillOpacity={0.2} />
+              <Area type="monotone" dataKey="waste" stackId="1" stroke={CATEGORY_COLORS.waste} fill={CATEGORY_COLORS.waste} fillOpacity={0.2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </AccessibleChart>
       </div>
     </div>
   );

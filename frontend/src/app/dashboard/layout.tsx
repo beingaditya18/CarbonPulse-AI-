@@ -9,20 +9,20 @@ import {
   Activity, 
   Trophy, 
   Settings, 
-  Award, 
   Menu, 
   X, 
   LogOut, 
   Moon, 
   Sun,
-  Loader2
+  Loader2,
+  Sparkles
 } from 'lucide-react';
 
 const NAV_LINKS = [
-  { href: '/dashboard', label: 'Overview', Icon: Activity },
-  { href: '/dashboard/twin', label: 'AI Carbon Twin', Icon: Leaf },
-  { href: '/dashboard/community', label: 'Community', Icon: Trophy },
-  { href: '/dashboard/achievements', label: 'Badges Vault', Icon: Award },
+  { href: '/dashboard', label: 'Track', Icon: Activity, step: '1', ariaLabel: 'Step 1: Track your emissions' },
+  { href: '/dashboard/insights', label: 'Explain', Icon: Sparkles, step: '2', ariaLabel: 'Step 2: Understand your footprint' },
+  { href: '/dashboard/twin', label: 'Simulate', Icon: Leaf, step: '3', ariaLabel: 'Step 3: Simulate lifestyle changes' },
+  { href: '/dashboard/community', label: 'Reduce', Icon: Trophy, step: '4', ariaLabel: 'Step 4: Reduce and earn rewards' },
 ] as const;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -35,10 +35,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
-    setMounted(true);
-    // Read dark mode state
-    const isDarkClass = document.documentElement.classList.contains('dark');
-    setIsDark(isDarkClass);
+    const timer = setTimeout(() => {
+      setMounted(true);
+      // Read dark mode state
+      const isDarkClass = document.documentElement.classList.contains('dark');
+      setIsDark(isDarkClass);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const toggleTheme = () => {
@@ -142,9 +145,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Primary nav links */}
-        <nav aria-label="Dashboard Menu" className="flex-1">
-          <ul className="space-y-1.5">
-            {NAV_LINKS.map(({ href, label, Icon }) => {
+        <nav aria-label="CarbonPulse main navigation" className="flex-1">
+          <ol aria-label="Your sustainability journey" className="space-y-1.5">
+            {NAV_LINKS.map(({ href, label, Icon, step, ariaLabel }) => {
               const isActive = pathname === href;
               return (
                 <li key={href}>
@@ -152,6 +155,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     href={href}
                     onClick={() => setSidebarOpen(false)}
                     aria-current={isActive ? 'page' : undefined}
+                    aria-label={ariaLabel}
                     className={[
                       'flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-semibold text-sm',
                       'outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2',
@@ -162,13 +166,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                           : 'hover:bg-zinc-100 text-zinc-600 border border-transparent',
                     ].join(' ')}
                   >
-                    <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-                    <span>{label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center justify-center w-5 h-5 bg-zinc-950/60 text-zinc-500 font-bold text-[10px] rounded-full border border-zinc-805/80 mr-1 shrink-0" aria-hidden="true">
+                        {step}
+                      </span>
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span>{label}</span>
+                    </div>
                   </Link>
                 </li>
               );
             })}
-          </ul>
+          </ol>
         </nav>
 
         {/* Footer info: User quick status */}

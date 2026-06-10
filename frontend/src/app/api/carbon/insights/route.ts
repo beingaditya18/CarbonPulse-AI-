@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { calculateSHAPExplanations } from '@/lib/shapEngine';
+import { calculateSHAPExplanations, SHAPExplanation } from '@/lib/shapEngine';
 import { checkRateLimit } from '@/utils/rateLimiter';
+import { validateEnvironment } from '@/lib/env';
 
 export const runtime = 'edge';
 
@@ -11,8 +12,11 @@ export const runtime = 'edge';
  * @param {NextRequest} req - Inbound network request.
  * @returns {Promise<NextResponse>} Structured JSON response.
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
+    // Validate required system environment variables
+    validateEnvironment();
+
     // 1. Rate Limiting Check
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     if (!checkRateLimit(ip)) {
@@ -36,7 +40,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       predicted_emission: data.predictedEmissions,
       target_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString(),
-      explanations: data.explanations.map((exp) => ({
+      explanations: data.explanations.map((exp: SHAPExplanation) => ({
         feature: exp.feature,
         impact: exp.impact,
         description: exp.description,

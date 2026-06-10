@@ -2,14 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useCarbonStore } from '@/store/useCarbonStore';
-import { Award, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Lock, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function AchievementsPage() {
-  const { badges, user } = useCarbonStore();
+  const { badges } = useCarbonStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const timer = setTimeout(() => {
+      setMounted(true);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!mounted) return null;
@@ -88,11 +91,22 @@ export default function AchievementsPage() {
       {/* BADGES MATRIX GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {badges.map((badge) => (
-          <div 
+          <article 
             key={badge.id}
-            className={`p-6 rounded-2xl border flex flex-col justify-between gap-4 transition-all duration-300 relative overflow-hidden group ${
+            role="button"
+            tabIndex={badge.unlocked ? 0 : -1}
+            aria-label={`${badge.name} badge. ${badge.unlocked ? `Unlocked: ${badge.description}` : `Locked. Requirement: ${badge.requirement}`}`}
+            aria-pressed={badge.unlocked}
+            aria-disabled={!badge.unlocked}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && badge.unlocked) {
+                e.preventDefault();
+                alert(`Unlocked achievement: ${badge.name}!`);
+              }
+            }}
+            className={`p-6 rounded-2xl border flex flex-col justify-between gap-4 transition-all duration-300 relative overflow-hidden group outline-none ${
               badge.unlocked 
-                ? 'bg-zinc-900/60 border-emerald-500/20 hover:border-emerald-500/40 hover:scale-102 shadow-md shadow-emerald-500/5' 
+                ? 'bg-zinc-900/60 border-emerald-500/20 hover:border-emerald-500/40 hover:scale-102 shadow-md shadow-emerald-500/5 focus-visible:ring-2 focus-visible:ring-emerald-500' 
                 : 'bg-zinc-900/20 border-zinc-800/80 grayscale'
             }`}
           >
@@ -108,7 +122,7 @@ export default function AchievementsPage() {
                     ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-inner' 
                     : 'bg-zinc-950 border-zinc-800 text-zinc-600'
                 }`}>
-                  {badge.icon}
+                  <span aria-hidden="true">{badge.icon}</span>
                 </div>
                 {badge.unlocked ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-500" />
@@ -121,6 +135,9 @@ export default function AchievementsPage() {
                 <h3 className={`font-extrabold text-sm ${badge.unlocked ? 'text-zinc-200' : 'text-zinc-500'}`}>
                   {badge.name}
                 </h3>
+                <span className="sr-only">
+                  {badge.unlocked ? 'Unlocked' : 'Locked'}
+                </span>
                 <p className="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed font-semibold">
                   {badge.description}
                 </p>
@@ -133,7 +150,7 @@ export default function AchievementsPage() {
                 {badge.requirement}
               </span>
             </div>
-          </div>
+          </article>
         ))}
       </div>
 

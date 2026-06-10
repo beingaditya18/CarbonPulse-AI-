@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/utils/rateLimiter';
 import { sanitizeInput } from '@/utils/sanitize';
+import { validateEnvironment } from '@/lib/env';
 
 export const runtime = 'edge';
 
@@ -25,8 +26,11 @@ const ChatRequestSchema = z.object({
  * @param {NextRequest} req - Inbound network request.
  * @returns {Promise<NextResponse>} Structured JSON response.
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Validate required system environment variables at startup
+    validateEnvironment();
+
     // 1. Rate Limiting Check
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     if (!checkRateLimit(ip)) {
@@ -37,7 +41,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Schema Validation
-    const json = await req.json();
+    const json: unknown = await req.json();
     const parseResult = ChatRequestSchema.safeParse(json);
     if (!parseResult.success) {
       return NextResponse.json(

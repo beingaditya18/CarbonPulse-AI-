@@ -6,7 +6,8 @@ import { useCarbonStore } from '@/store/useCarbonStore';
 import { CategoryType } from '@/types/store';
 import { simulateTwinEmissions } from '@/lib/twinRegression';
 import { TwinAvatar } from '@/features/twin/components/TwinAvatar';
-import { Activity, Play, Zap, Car, Apple, ShoppingBag, Trash } from 'lucide-react';
+import { EmptyTwin } from '@/components/feedback/EmptyTwin';
+import { Activity, Play } from 'lucide-react';
 
 // Dynamic import of forecast chart widget for performance
 const TwinForecastChart = dynamic(
@@ -25,7 +26,7 @@ const TwinForecastChart = dynamic(
  * CarbonTwinPage enables scenario modeling and forecasting of user carbon paths.
  */
 export default function CarbonTwinPage() {
-  const { logs, user } = useCarbonStore();
+  const { logs } = useCarbonStore();
   const [mounted, setMounted] = useState(false);
 
   // Simulation Parameters
@@ -44,14 +45,18 @@ export default function CarbonTwinPage() {
   });
 
   useEffect(() => {
-    setMounted(true);
+    setTimeout(() => {
+      setMounted(true);
+    }, 0);
   }, []);
 
   // Sync simulation outputs dynamically
   useEffect(() => {
     if (mounted && logs.length > 0) {
       const results = simulateTwinEmissions(logs, targetCategory, reductionPercent, days);
-      setSimResults(results);
+      setTimeout(() => {
+        setSimResults(results);
+      }, 0);
     }
   }, [targetCategory, reductionPercent, days, logs, mounted]);
 
@@ -92,7 +97,10 @@ export default function CarbonTwinPage() {
       </header>
 
       {/* DUAL WORKSPACE LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+      {logs.length < 7 ? (
+        <EmptyTwin />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         
         {/* LEFT COLUMN: PARAMETER SETTING & PROJECTIONS */}
         <div className="lg:col-span-7 bg-zinc-900 border border-zinc-800/80 p-6 rounded-2xl flex flex-col justify-between space-y-6">
@@ -214,6 +222,7 @@ export default function CarbonTwinPage() {
         </div>
 
       </div>
+      )}
 
     </div>
   );

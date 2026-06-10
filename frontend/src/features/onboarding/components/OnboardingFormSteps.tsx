@@ -46,7 +46,7 @@ export function OnboardingFormSteps({
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="space-y-2">
             <h1 className="text-2xl font-extrabold flex items-center gap-2">
-              <User className="w-6 h-6 text-emerald-500" /> Let's initialize your profile
+              <User className="w-6 h-6 text-emerald-500" /> Let&apos;s initialize your profile
             </h1>
             <p className="text-sm text-zinc-400">
               Welcome to CarbonPulse AI+. Enter your credentials to configure your enterprise carbon workspace.

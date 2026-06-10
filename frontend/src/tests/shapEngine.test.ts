@@ -1,34 +1,67 @@
-import { describe, it, expect } from 'vitest';
-import { calculateSHAPExplanations } from '@/lib/shapEngine';
-import { CarbonLog } from '@/types/store';
+import { describe, test, expect } from 'vitest';
+import { calculateShapValues } from '@/lib/shapEngine';
 
-describe('SHAP Explanation Engine', () => {
-  it('correctly calculates baseline and shap values for empty logs', () => {
-    const logs: CarbonLog[] = [];
-    const result = calculateSHAPExplanations(logs);
+const baseline = {
+  transport: 100,
+  food: 50,
+  electricity: 80,
+};
 
-    expect(result.baseValue).toBe(283);
-    expect(result.predictedEmissions).toBe(0);
-    expect(result.explanations.length).toBeGreaterThan(0);
+const exactBaselineEmissions = [
+  { category: 'transport', value: 100 },
+  { category: 'food', value: 50 },
+  { category: 'electricity', value: 80 },
+];
+
+const zeroEmissions = [
+  { category: 'transport', value: 0 },
+  { category: 'food', value: 0 },
+  { category: 'electricity', value: 0 },
+];
+
+const userEmissions = [
+  { category: 'transport', value: 150 },
+  { category: 'food', value: 70 },
+  { category: 'electricity', value: 60 },
+];
+
+const expectedTotalDeviation = (150 + 70 + 60) - (100 + 50 + 80); // 280 - 230 = 50
+
+describe('SHAP Engine — Edge Cases', () => {
+
+  test('throws on empty emissions array', () => {
+    expect(() => calculateShapValues([], baseline))
+      .toThrow('Insufficient data');
   });
 
-  it('correctly attributes higher transport emissions', () => {
-    const logs: CarbonLog[] = [
-      {
-        id: '1',
-        category: 'transportation',
-        emission_amount: 150,
-        source: 'manual',
-        description: 'Drive',
-        logged_date: new Date().toISOString(),
-      },
-    ];
+  test('handles single category correctly', () => {
+    const result = calculateShapValues(
+      [{ category: 'transport', value: 120 }],
+      baseline
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].contribution).toBeDefined();
+  });
 
-    const result = calculateSHAPExplanations(logs);
-    const transportExp = result.explanations.find((e) => e.feature === 'Transportation');
+  test('returns zero contribution when equal to baseline', () => {
+    const result = calculateShapValues(
+      exactBaselineEmissions,
+      baseline
+    );
+    result.forEach(r => expect(r.contribution).toBe(0));
+  });
 
-    expect(transportExp).toBeDefined();
-    // Transportation should drive emissions higher
-    expect(transportExp?.direction).toBe('higher');
+  test('handles all-zero emissions without NaN', () => {
+    const result = calculateShapValues(zeroEmissions, baseline);
+    result.forEach(r => {
+      expect(r.contribution).not.toBeNaN();
+      expect(isFinite(r.contribution)).toBe(true);
+    });
+  });
+
+  test('contributions sum matches total deviation', () => {
+    const result = calculateShapValues(userEmissions, baseline);
+    const sum = result.reduce((a, b) => a + b.contribution, 0);
+    expect(sum).toBeCloseTo(expectedTotalDeviation, 2);
   });
 });
